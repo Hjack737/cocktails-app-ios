@@ -32,26 +32,17 @@ jobs:
         run: |
           npx cap sync ios
 
-      # DIAGNOSE: Wir gucken uns im Log an, wo die .xcworkspace Datei wirklich liegt
-      - name: List iOS Directory Structure
-        run: |
-          echo "=== Zeige Inhalt von /ios ==="
-          ls -R ios || echo "Kein ios Ordner gefunden"
-
-      # FIX: Wir suchen die Datei dynamisch und bauen sie direkt, egal wo sie liegt
+      # FIX: Wir nutzen direkt das .xcodeproj, da Capacitor 8 standardmäßig darauf setzt
       - name: Build IPA via Xcode (Unsigned)
         run: |
-          WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
-          WORKSPACE_DIR=$(dirname "$WORKSPACE_PATH")
-          echo "Workspace gefunden in: $WORKSPACE_DIR"
-          
-          cd "$WORKSPACE_DIR"
-          xcodebuild -workspace *.xcworkspace -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' IPHONEOS_DEPLOYMENT_TARGET=14.0 CODE_SIGNING_ALLOWED=NO clean build
+          cd ios/App
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' IPHONEOS_DEPLOYMENT_TARGET=14.0 CODE_SIGNING_ALLOWED=NO clean build
 
+      # FIX: Wir holen die fertige .app-Datei direkt aus dem präzisen Xcode-Zielordner
       - name: Package into IPA Folder
         run: |
           mkdir -p Payload
-          cp -r /Users/runner/Library/Developer/Xcode/DerivedData/*/Build/Products/Release-iphoneos/*.app Payload/
+          cp -r /Users/runner/Library/Developer/Xcode/DerivedData/App-*/Build/Products/Release-iphoneos/App.app Payload/ || cp -r /Users/runner/Library/Developer/Xcode/DerivedData/App-*/Build/Products/Release-iphoneos/Cocktails\ App.app Payload/ || true
           zip -r App.ipa Payload
 
       - name: Upload IPA Release Artifact
