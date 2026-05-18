@@ -10,10 +10,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # FIX: Wir setzen die Node-Version von 20 auf 22 hoch
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Prepare Web Directory
         run: |
@@ -28,7 +29,6 @@ jobs:
           npm install @capacitor/ios@latest
           npx cap add ios
 
-      # FIX: Wir setzen das minimale iOS-Ziel im Xcode-Projekt hoch, damit CocoaPods nicht meckert
       - name: Fix iOS Deployment Target for CocoaPods
         run: |
           sed -i '' 's/platform :ios, '"'"'12.0'"'"'/platform :ios, '"'"'14.0'"'"'/g' ios/App/Podfile
@@ -38,7 +38,6 @@ jobs:
         run: |
           npx cap sync ios
 
-      # FIX: Wir sagen Xcode explizit, für welches Mindest-iOS gebaut werden soll
       - name: Build IPA via Xcode (Unsigned)
         run: |
           cd ios/App
