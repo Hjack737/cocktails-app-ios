@@ -1,0 +1,44 @@
+name: Build Free IPA
+
+on:
+  workflow_dispatch: # Erlaubt es, den Build manuell per Klick zu starten
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-size: 20
+
+      - name: Install Capacitor & Framework
+        run: |
+          npm install @capacitor/core @capacitor/cli
+          npx cap init "Meine App" "com.deinname.htmlapp" --web-dir=.
+          npm install @capacitor/ios
+          npx cap add ios
+
+      - name: Copy Web Files to iOS Project
+        run: |
+          npx cap sync ios
+
+      - name: Build IPA via Xcode (Unsigned)
+        run: |
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -allowProvisioningUpdates TYPE=Release clean build CODE_SIGNING_ALLOWED=NO
+
+      - name: Package into IPA Folder
+        run: |
+          mkdir -p Payload
+          cp -r /Users/runner/Library/Developer/Xcode/DerivedData/*/Build/Products/Release-iphoneos/App.app Payload/
+          zip -r App.ipa Payload
+
+      - name: Upload IPA Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-free-html-app
+          path: App.ipa
