@@ -28,21 +28,30 @@ jobs:
           npm install @capacitor/ios@latest
           npx cap add ios
 
-      # FIX: Wir synchronisieren das Projekt ZUERST. Das erstellt alle iOS-Dateien fehlerfrei.
       - name: Sync Web Files to iOS Project
         run: |
           npx cap sync ios
 
-      # FIX: Wir sagen Xcode beim Kompilieren direkt, dass es iOS 14+ nutzen soll, ohne im Podfile herumzufummeln
+      # DIAGNOSE: Wir gucken uns im Log an, wo die .xcworkspace Datei wirklich liegt
+      - name: List iOS Directory Structure
+        run: |
+          echo "=== Zeige Inhalt von /ios ==="
+          ls -R ios || echo "Kein ios Ordner gefunden"
+
+      # FIX: Wir suchen die Datei dynamisch und bauen sie direkt, egal wo sie liegt
       - name: Build IPA via Xcode (Unsigned)
         run: |
-          cd ios/App
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' IPHONEOS_DEPLOYMENT_TARGET=14.0 CODE_SIGNING_ALLOWED=NO clean build
+          WORKSPACE_PATH=$(find ios -name "*.xcworkspace" | head -n 1)
+          WORKSPACE_DIR=$(dirname "$WORKSPACE_PATH")
+          echo "Workspace gefunden in: $WORKSPACE_DIR"
+          
+          cd "$WORKSPACE_DIR"
+          xcodebuild -workspace *.xcworkspace -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' IPHONEOS_DEPLOYMENT_TARGET=14.0 CODE_SIGNING_ALLOWED=NO clean build
 
       - name: Package into IPA Folder
         run: |
           mkdir -p Payload
-          cp -r /Users/runner/Library/Developer/Xcode/DerivedData/*/Build/Products/Release-iphoneos/App.app Payload/
+          cp -r /Users/runner/Library/Developer/Xcode/DerivedData/*/Build/Products/Release-iphoneos/*.app Payload/
           zip -r App.ipa Payload
 
       - name: Upload IPA Release Artifact
