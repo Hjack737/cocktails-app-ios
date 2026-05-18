@@ -32,20 +32,24 @@ jobs:
         run: |
           npx cap sync ios
 
-      # FIX: Wir fügen 'continue-on-error' hinzu, damit der Signier-Fehler den Build nicht blockiert
+      # FIX: Wir nutzen CODE_SIGNING_REQUIRED=NO (statt ALLOWED=NO), das erzeugt die Binärdatei sauberer
       - name: Build IPA via Xcode (Unsigned)
-        continue-on-error: true
         run: |
           cd ios/App
-          xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' IPHONEOS_DEPLOYMENT_TARGET=14.0 CODE_SIGNING_ALLOWED=NO clean build
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' IPHONEOS_DEPLOYMENT_TARGET=14.0 CODE_SIGN_REQUIRED=NO CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO AD_HOC_CODE_SIGNING_ALLOWED=YES clean build
 
-      # FIX: Wir suchen die .app Datei jetzt radikal über das gesamte System, damit nichts schiefgeht
+      # FIX: Wir packen die .app präzise ein und stellen sicher, dass die ausführbare Datei die richtigen Rechte hat
       - name: Package into IPA Folder
         run: |
           mkdir -p Payload
-          APP_PATH=$(find /Users/runner/Library/Developer/Xcode/DerivedData -name "*.app" -type d | grep -v "Index.noindex" | head -n 1)
-          echo "Gefundener App-Pfad: $APP_PATH"
-          cp -r "$APP_PATH" Payload/
+          # Sucht gezielt im Release-Ordner nach der echten App
+          TARGET_APP=$(find /Users/runner/Library/Developer/Xcode/DerivedData -name "App.app" -type d | grep "Release-iphoneos" | head -n 1)
+          echo "Kopiere App von: $TARGET_APP"
+          cp -r "$TARGET_APP" Payload/
+          
+          # Macht die ausführbare Datei innerhalb der App für iOS lesbar (behebt Bad File Descriptor)
+          chmod +x Payload/App.app/App
+          
           zip -r App.ipa Payload
 
       - name: Upload IPA Release Artifact
