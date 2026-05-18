@@ -10,7 +10,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # FIX: Wir setzen die Node-Version von 20 auf 22 hoch
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -19,7 +18,7 @@ jobs:
       - name: Prepare Web Directory
         run: |
           mkdir -p www
-          find . -maxdepth 1 -type f -not -name ".*" -exec cp {} www/ \;
+          find . -maxdepth 1 -type f -not -name ".*" -not -name "App.ipa" -exec cp {} www/ \;
           find . -maxdepth 1 -type d -not -name "." -not -name ".." -not -name ".git" -not -name ".github" -not -name "www" -exec cp -r {} www/ \;
 
       - name: Install Capacitor & Framework
@@ -29,15 +28,12 @@ jobs:
           npm install @capacitor/ios@latest
           npx cap add ios
 
-      - name: Fix iOS Deployment Target for CocoaPods
-        run: |
-          sed -i '' 's/platform :ios, '"'"'12.0'"'"'/platform :ios, '"'"'14.0'"'"'/g' ios/App/Podfile
-          cd ios/App && pod update
-
-      - name: Copy Web Files to iOS Project
+      # FIX: Wir synchronisieren das Projekt ZUERST. Das erstellt alle iOS-Dateien fehlerfrei.
+      - name: Sync Web Files to iOS Project
         run: |
           npx cap sync ios
 
+      # FIX: Wir sagen Xcode beim Kompilieren direkt, dass es iOS 14+ nutzen soll, ohne im Podfile herumzufummeln
       - name: Build IPA via Xcode (Unsigned)
         run: |
           cd ios/App
