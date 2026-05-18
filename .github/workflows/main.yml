@@ -15,29 +15,34 @@ jobs:
         with:
           node-version: 20
 
-      # FIX: Wir erstellen einen "www" Ordner und schieben die Web-Dateien rein
       - name: Prepare Web Directory
         run: |
           mkdir -p www
           find . -maxdepth 1 -type f -not -name ".*" -exec cp {} www/ \;
-          # Falls du Unterordner wie css/js/assets hast, kopieren wir die auch mit:
           find . -maxdepth 1 -type d -not -name "." -not -name ".." -not -name ".git" -not -name ".github" -not -name "www" -exec cp -r {} www/ \;
 
       - name: Install Capacitor & Framework
         run: |
-          npm install @capacitor/core @capacitor/cli
+          npm install @capacitor/core@latest @capacitor/cli@latest
           npx cap init "Cocktails App" "com.deinname.cocktailapp" --web-dir=www
-          npm install @capacitor/ios
+          npm install @capacitor/ios@latest
           npx cap add ios
+
+      # FIX: Wir setzen das minimale iOS-Ziel im Xcode-Projekt hoch, damit CocoaPods nicht meckert
+      - name: Fix iOS Deployment Target for CocoaPods
+        run: |
+          sed -i '' 's/platform :ios, '"'"'12.0'"'"'/platform :ios, '"'"'14.0'"'"'/g' ios/App/Podfile
+          cd ios/App && pod update
 
       - name: Copy Web Files to iOS Project
         run: |
           npx cap sync ios
 
+      # FIX: Wir sagen Xcode explizit, für welches Mindest-iOS gebaut werden soll
       - name: Build IPA via Xcode (Unsigned)
         run: |
           cd ios/App
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -allowProvisioningUpdates CODE_SIGNING_ALLOWED=NO clean build
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' IPHONEOS_DEPLOYMENT_TARGET=14.0 CODE_SIGNING_ALLOWED=NO clean build
 
       - name: Package into IPA Folder
         run: |
