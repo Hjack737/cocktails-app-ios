@@ -1,7 +1,7 @@
 name: Build Free IPA
 
 on:
-  workflow_dispatch: # Erlaubt es, den Build manuell per Klick zu starten
+  workflow_dispatch:
 
 jobs:
   build-ios:
@@ -13,12 +13,20 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-size: 20
+          node-version: 20
+
+      # FIX: Wir erstellen einen "www" Ordner und schieben die Web-Dateien rein
+      - name: Prepare Web Directory
+        run: |
+          mkdir -p www
+          find . -maxdepth 1 -type f -not -name ".*" -exec cp {} www/ \;
+          # Falls du Unterordner wie css/js/assets hast, kopieren wir die auch mit:
+          find . -maxdepth 1 -type d -not -name "." -not -name ".." -not -name ".git" -not -name ".github" -not -name "www" -exec cp -r {} www/ \;
 
       - name: Install Capacitor & Framework
         run: |
           npm install @capacitor/core @capacitor/cli
-          npx cap init "Meine App" "com.deinname.htmlapp" --web-dir=.
+          npx cap init "Cocktails App" "com.deinname.cocktailapp" --web-dir=www
           npm install @capacitor/ios
           npx cap add ios
 
@@ -29,7 +37,7 @@ jobs:
       - name: Build IPA via Xcode (Unsigned)
         run: |
           cd ios/App
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -allowProvisioningUpdates TYPE=Release clean build CODE_SIGNING_ALLOWED=NO
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -allowProvisioningUpdates CODE_SIGNING_ALLOWED=NO clean build
 
       - name: Package into IPA Folder
         run: |
@@ -40,5 +48,5 @@ jobs:
       - name: Upload IPA Release Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: my-free-html-app
+          name: cocktails-app-ipa
           path: App.ipa
