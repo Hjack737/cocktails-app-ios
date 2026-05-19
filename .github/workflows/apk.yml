@@ -1,4 +1,4 @@
-name: Build Free APK via Cordova
+name: Build APK
 
 on:
   workflow_dispatch:
