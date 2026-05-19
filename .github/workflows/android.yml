@@ -1,0 +1,70 @@
+name: Build Free APK via Cordova
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest # Linux ist schneller und gratis
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Android braucht Java, um den Code zu kompileren
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # Installiert das Android SDK, das Cordova zum Bauen benötigt
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Cordova & Create Project
+        run: |
+          npm install -g cordova
+          cordova create htmlapp com.dummy.app "DummyApp"
+          
+          # Kopiert deine config.xml und das Icon rein
+          if [ -f "config.xml" ]; then cp config.xml htmlapp/config.xml; fi
+          mkdir -p htmlapp/res
+          if [ -f "res/icon.png" ]; then cp res/icon.png htmlapp/res/icon.png; fi
+
+      # Kopiert deine HTML-, CSS- und JS-Dateien
+      - name: Copy Web Files
+        run: |
+          rm -rf htmlapp/www/*
+          find . -maxdepth 1 -type f -not -name ".*" -not -name "config.xml" -exec cp {} htmlapp/www/ \;
+          find . -maxdepth 1 -type d -not -name "." -not -name ".." -not -name ".git" -not -name ".github" -not -name "htmlapp" -not -name "res" -exec cp -r {} htmlapp/www/ \;
+
+      - name: Add Android Platform
+        run: |
+          cd htmlapp
+          cordova platform add android
+          cordova prepare android
+
+      # Der eigentliche Android-Build (wir bauen eine universelle Debug-APK)
+      - name: Build Android APK
+        run: |
+          cd htmlapp
+          cordova build android --debug
+
+      # Holt die fertige .apk aus dem Android-Ausgabeordner
+      - name: Find and Move APK
+        run: |
+          APK_PATH=$(find htmlapp/platforms/android/app/build/outputs/apk/debug -name "*.apk" -type f | head -n 1)
+          echo "APK gefunden unter: $APK_PATH"
+          cp "$APK_PATH" app-debug.apk
+
+      # Lädt die APK als GitHub-Artefakt hoch
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cocktails-app-apk
+          path: app-debug.apk
