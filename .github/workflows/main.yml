@@ -18,7 +18,13 @@ jobs:
       - name: Install Cordova & Create Project
         run: |
           npm install -g cordova
-          cordova create htmlapp com.deinname.cocktailapp "Cocktails App"
+          # Wir erstellen ein leeres Projekt
+          cordova create htmlapp com.hjack737.cocktails "Cocktails"
+          # Wir überschreiben die automatisch generierte config.xml mit DEINER
+          cp config.xml htmlapp/config.xml
+          # Wir kopieren das Icon, falls vorhanden
+          mkdir -p htmlapp/res
+          if [ -f "res/icon.png" ]; then cp res/icon.png htmlapp/res/icon.png; fi
           
       - name: Copy Web Files
         run: |
