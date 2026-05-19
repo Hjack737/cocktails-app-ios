@@ -1,16 +1,23 @@
 <?xml version='1.0' encoding='utf-8'?>
-<widget id="com.hjack737.cocktails" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
-    <!-- 1. Hier trägst du deinen gewünschten App-Namen ein -->
-    <name>Cocktails</name>
-    
-    <description>Hjacks Cocktail-App</description>
-    <author email="feschaff@gmail.com">Hjack737</author>
+<widget id="com.deinname.cocktailapp" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+    <name>Cocktail Rezepte</name>
+    <description>Meine eigene Cocktail-App für iOS und Android</description>
+    <author email="it@example.com">Dein Name</author>
     
     <content src="index.html" />
     
+    <!-- Gemeinsames Icon-Handling: Cordova sucht nach res/icon.png -->
+    <icon src="res/icon.png" />
+
     <!-- iOS spezifische Einstellungen -->
     <platform name="ios">
-        <!-- Sucht nach dem Icon im res-Ordner -->
         <icon src="res/icon.png" width="1024" height="1024" />
+    </platform>
+
+    <!-- Android spezifische Einstellungen -->
+    <platform name="android">
+        <!-- Erlaubt Gradle (dem Android-Builder) ein sauberes Paketieren -->
+        <preference name="AndroidXEnabled" value="true" />
+        <icon src="res/icon.png" target="mipmap/ic_launcher" />
     </platform>
 </widget>
