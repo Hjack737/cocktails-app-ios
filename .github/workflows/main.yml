@@ -32,15 +32,26 @@ jobs:
           cordova platform add ios
           cordova prepare ios
 
-      # FIX: Sauberes, einzeiliges JSON ohne störende Zeilenumbrüche oder Backslashes
+      # FIX: Wir injizieren eine Fake-Team-ID direkt in die Xcode-Projektdatei, um den Fehler zu umgehen
+      - name: Inject Fake Development Team
+        run: |
+          PROJ_PATH="htmlapp/platforms/ios/App.xcodeproj/project.pbxproj"
+          sed -i '' 's/DevelopmentTeam = "";/DevelopmentTeam = "12345ABCDE";/g' "$PROJ_PATH" || true
+          # Falls der Wert noch gar nicht existiert, fügen wir ihn in die Target-Attribute ein
+          sed -i '' 's/TargetAttributes = {/TargetAttributes = {\
+            "1D6051220E11D67400C2174A" = {\
+              DevelopmentTeam = 12345ABCDE;\
+            };/g' "$PROJ_PATH" || true
+
       - name: Configure Xcode Build Settings
         run: |
-          echo '{"ios":{"release":{"codeSignIdentity":"","developmentTeam":"","packageType":"ad-hoc","provisioningProfile":""}}}' > htmlapp/build.json
+          echo '{"ios":{"release":{"codeSignIdentity":"","developmentTeam":"12345ABCDE","packageType":"ad-hoc","provisioningProfile":""}}}' > htmlapp/build.json
 
+      # FIX: Wir erlauben Ad-Hoc-Signierung ohne echtes Zertifikat
       - name: Build Xcode Project
         run: |
           cd htmlapp
-          cordova build ios --release --device -- --CODE_SIGNING_ALLOWED=NO --CODE_SIGNING_REQUIRED=NO
+          cordova build ios --release --device -- --CODE_SIGNING_ALLOWED=NO --CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
 
       - name: Package into IPA Folder
         run: |
