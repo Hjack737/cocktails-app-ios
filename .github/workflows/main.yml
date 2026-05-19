@@ -32,31 +32,23 @@ jobs:
           cordova platform add ios
           cordova prepare ios
 
-      # FIX: Wir injizieren eine Fake-Team-ID direkt in die Xcode-Projektdatei, um den Fehler zu umgehen
+      # FIX: Wir injizieren die Fake-Team-ID in die Projektdatei
       - name: Inject Fake Development Team
         run: |
           PROJ_PATH="htmlapp/platforms/ios/App.xcodeproj/project.pbxproj"
           sed -i '' 's/DevelopmentTeam = "";/DevelopmentTeam = "12345ABCDE";/g' "$PROJ_PATH" || true
-          # Falls der Wert noch gar nicht existiert, fügen wir ihn in die Target-Attribute ein
-          sed -i '' 's/TargetAttributes = {/TargetAttributes = {\
-            "1D6051220E11D67400C2174A" = {\
-              DevelopmentTeam = 12345ABCDE;\
-            };/g' "$PROJ_PATH" || true
 
-      - name: Configure Xcode Build Settings
+      # FIX: Wir umgehen Cordova beim Build und zwingen Xcode direkt dazu, Profile komplett zu ignorieren
+      - name: Direct Native Xcode Build (Unsigned)
         run: |
-          echo '{"ios":{"release":{"codeSignIdentity":"","developmentTeam":"12345ABCDE","packageType":"ad-hoc","provisioningProfile":""}}}' > htmlapp/build.json
+          cd htmlapp/platforms/ios
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' IPHONEOS_DEPLOYMENT_TARGET=14.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" PROVISIONING_PROFILE_SPECIFIER="" PROVISIONING_PROFILE="" clean build
 
-      # FIX: Wir erlauben Ad-Hoc-Signierung ohne echtes Zertifikat
-      - name: Build Xcode Project
-        run: |
-          cd htmlapp
-          cordova build ios --release --device -- --CODE_SIGNING_ALLOWED=NO --CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
-
+      # FIX: Wir holen uns die frisch gebaute .app-Datei direkt aus den nativen Xcode-DerivedData
       - name: Package into IPA Folder
         run: |
           mkdir -p Payload
-          APP_PATH=$(find htmlapp/platforms/ios/build/device -name "*.app" -type d | head -n 1)
+          APP_PATH=$(find /Users/runner/Library/Developer/Xcode/DerivedData -name "*.app" -type d | grep "Release-iphoneos" | head -n 1)
           echo "App gefunden unter: $APP_PATH"
           cp -r "$APP_PATH" Payload/
           zip -r App.ipa Payload
