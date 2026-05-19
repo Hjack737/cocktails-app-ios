@@ -18,7 +18,6 @@
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
-        /* Custom Scrollbar für die Zutatenliste */
         .custom-scroll::-webkit-scrollbar { width: 6px; }
         .custom-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); border-radius: 10px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.2); border-radius: 10px; }
@@ -43,6 +42,11 @@
             </div>
 
             <div class="flex items-center gap-2 flex-wrap justify-center">
+                <button onclick="toggleMakeList()" class="relative flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-5 py-2.5 rounded-2xl transition-all">
+                    <i class="fas fa-clipboard-list text-amber-400"></i>
+                    <span class="font-medium text-sm text-amber-100">Mach-Liste</span>
+                    <span id="makeListBadge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-slate-950 text-[10px] font-bold px-2 py-0.5 rounded-full">0</span>
+                </button>
                 <button onclick="toggleBar()" class="flex items-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 px-5 py-2.5 rounded-2xl transition-all">
                     <i class="fas fa-wine-bottle text-emerald-400"></i>
                     <span class="font-medium text-sm text-emerald-100">Meine Bar</span>
@@ -59,6 +63,22 @@
     </header>
 
     <main class="max-w-7xl mx-auto px-6 py-10">
+
+        <section id="makeListSection" class="hidden mb-12 p-8 glass rounded-[2.5rem] border border-amber-500/20 animate-fade-in">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-clipboard-list text-amber-400 text-xl"></i>
+                    <div>
+                        <h2 class="text-xl font-bold text-amber-500">Aktuelle Mach-Liste</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Reihenfolge der Bestellungen. Tippe auf den Haken für -1, halte gedrückt um komplett zu löschen.</p>
+                    </div>
+                </div>
+                <button onclick="clearMakeList()" class="bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs px-4 py-2 rounded-xl transition-all font-medium">
+                    Alle leeren
+                </button>
+            </div>
+            <div id="makeListContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </section>
 
         <section id="backupSection" class="hidden mb-12 p-8 glass rounded-[2.5rem] border-2 border-dashed border-sky-500/20 animate-fade-in">
             <div class="flex items-center gap-3 mb-6">
@@ -96,9 +116,7 @@
                     </button>
                 </div>
             </div>
-            
-            <div id="barIngredientsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-96 overflow-y-auto pr-2 custom-scroll">
-                </div>
+            <div id="barIngredientsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-96 overflow-y-auto pr-2 custom-scroll"></div>
         </section>
         
         <section id="listsSection" class="hidden mb-12 animate-fade-in">
@@ -138,11 +156,11 @@
 
     <script>
         let allCocktails = [];
-        let allIngredients = []; // Liste aller eindeutigen Zutaten aus den Rezepten
+        let allIngredients = [];
         
-        // EINHEITLICHE KEYS
         let favorites = JSON.parse(localStorage.getItem('hca_favorites_v1')) || [];
         let myBarIngredients = JSON.parse(localStorage.getItem('hca_bar_ingredients_v1')) || [];
+        let makeList = JSON.parse(localStorage.getItem('hca_makelist_v1')) || [];
         
         const DATA_URL = 'https://raw.githubusercontent.com/rasmusab/iba-cocktails/main/wikipedia/iba-cocktails-wiki.json';
 
@@ -151,68 +169,36 @@
                 const response = await fetch(DATA_URL);
                 allCocktails = await response.json();
                 
-                // Extrahiere alle einzigartigen Zutaten aus den Cocktail-Daten
                 extractUniqueIngredients();
-                
-                // Initialisiere Bar UI Elemente
                 renderBarIngredients();
-                
-                // Wende Filter an und klinke UI ein
                 applyFilters();
+                updateMakeListUI();
                 updateBackupText(); 
             } catch (err) {
                 document.getElementById('cocktailGrid').innerHTML = `<p class="col-span-full text-center text-red-400">Fehler beim Laden der Daten.</p>`;
             }
         }
 
-        // 1. Die runderneuerte Bereinigungs-Funktion
         function cleanIngredientName(str) {
             if (!str) return '';
-            
-            // Alles in Kleinbuchstaben umwandeln, um Case-Sensitivity komplett zu eliminieren
             let clean = str.toLowerCase();
-
-            // Alles in Klammern komplett entfernen, z.B. (1 part), (optional)
             clean = clean.replace(/\([^)]*\)/g, '');
-
-            // Typische Mengenangaben am Anfang entfernen (Zahlen, Brüche, cl, ml, oz, etc.)
             clean = clean.replace(/^\d+([./,]\d+)?\s*(cl|ml|oz|fl\s*oz|g|gr)?\s+/g, '');
             clean = clean.replace(/^\d+\/\d+\s*(cl|ml|oz|fl\s*oz|g|gr)?\s+/g, '');
             clean = clean.replace(/^(\d+\s+\d+\/\d+|\d+[-–]\d+)\s*(cl|ml|oz|fl\s*oz|g|gr)?\s+/g, '');
 
-            // Unnötige Text-Mengenangaben und Füllwörter entfernen (Regex ignoriert Groß-/Kleinschreibung durch 'g')
             const phrasesToRemove = [
-                /^\s*a\s+splash\s+of\s+/g,
-                /^\s*dash\s+of\s+/g,
-                /^\s*few\s+dashes\s+(of\s+)?/g,
-                /^\s*few\s+drops\s+(of\s+)?/g,
-                /^\s*two\s+dashes\s+(of\s+)?/g,
-                /^\s*bar\s+spoon\s+(of\s+)?/g,
-                /^\s*tablespoon\s+(of\s+)?/g,
-                /^\s*teaspoons?\s+(of\s+)?/g,
-                /^\s*quarter-sized\s+slices\s+of\s+/g,
-                /^\s*garnish\s+with\s+/g,
-                /^\s*to\s+top\s+up\s+/g,
-                /^\s*fill\s+with\s+/g,
-                /^\s*top\s+with\s+/g,
-                /^\s*of\s+/g,
-                /^\s*to\s+/g,
-                /^\s*chilled\s+/g
+                /^\s*a\s+splash\s+of\s+/g, /^\s*dash\s+of\s+/g, /^\s*few\s+dashes\s+(of\s+)?/g,
+                /^\s*few\s+drops\s+(of\s+)?/g, /^\s*two\s+dashes\s+(of\s+)?/g, /^\s*bar\s+spoon\s+(of\s+)?/g,
+                /^\s*tablespoon\s+(of\s+)?/g, /^\s*teaspoons?\s+(of\s+)?/g, /^\s*quarter-sized\s+slices\s+of\s+/g,
+                /^\s*garnish\s+with\s+/g, /^\s*to\s+top\s+up\s+/g, /^\s*fill\s+with\s+/g,
+                /^\s*top\s+with\s+/g, /^\s*of\s+/g, /^\s*to\s+/g, /^\s*chilled\s+/g
             ];
 
-            // Alle Phrasen nacheinander wegschneiden
-            phrasesToRemove.forEach(regex => {
-                clean = clean.replace(regex, '');
-            });
-
-            // Whitespaces aufräumen
-            clean = clean.trim();
-
-            // Falls nichts übrig bleibt, nimm das Original (in Kleinbuchstaben)
-            return clean || str.toLowerCase();
+            phrasesToRemove.forEach(regex => { clean = clean.replace(regex, ''); });
+            return clean.trim() || str.toLowerCase();
         }
 
-        // 2. Die angepasste Extraktion, die nun sauber auf Kleinbuchstaben setzt
         function extractUniqueIngredients() {
             const ingredientSet = new Set();
             allCocktails.forEach(c => {
@@ -224,17 +210,13 @@
                 }
             });
     
-    // Array sortieren und für die Anzeige den ersten Buchstaben groß machen
-    allIngredients = Array.from(ingredientSet)
-        .map(ing => ing.charAt(0).toUpperCase() + ing.slice(1))
-        .sort((a, b) => a.localeCompare(b));
-}
+            allIngredients = Array.from(ingredientSet)
+                .map(ing => ing.charAt(0).toUpperCase() + ing.slice(1))
+                .sort((a, b) => a.localeCompare(b));
+        }
 
-        // Überprüft, ob ein Cocktail alle ausgewählten Bar-Zutaten besitzt
         function canMix(cocktail) {
-            if (myBarIngredients.length === 0) return true; // Wenn Bar leer, alles zeigen
-            
-            // Ein Cocktail ist mixbar, wenn JEDE seiner Zutaten in 'myBarIngredients' enthalten ist
+            if (myBarIngredients.length === 0) return true;
             return cocktail.ingredients.every(ing => {
                 const cleanIng = cleanIngredientName(ing).toLowerCase();
                 return myBarIngredients.some(barIng => cleanIng.includes(barIng.toLowerCase()) || barIng.toLowerCase().includes(cleanIng));
@@ -245,24 +227,41 @@
             const grid = document.getElementById('cocktailGrid');
             
             if(data.length === 0) {
-                grid.innerHTML = `<p class="col-span-full text-center text-slate-500 py-20">Keine passenden Cocktails für die aktuelle Auswahl gefunden.</p>`;
+                grid.innerHTML = `<p class="col-span-full text-center text-slate-500 py-20">Keine passenden Cocktails gefunden.</p>`;
                 return;
             }
 
             grid.innerHTML = data.map(c => {
                 const isFav = favorites.includes(c.name);
+                const bombasticName = c.name.replace(/'/g, "\\'");
                 return `
-                <div class="cocktail-card glass rounded-[2rem] overflow-hidden flex flex-col cursor-pointer" onclick="openDetail('${c.name.replace(/'/g, "\\'")}')">
+                <div class="cocktail-card glass rounded-[2rem] overflow-hidden flex flex-col cursor-pointer relative" onclick="openDetail('${bombasticName}')">
                     <div class="h-64 overflow-hidden relative img-placeholder">
                         <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(c.name)}&background=0f172a&color=38bdf8&size=512" 
                              data-name="${c.name}"
                              class="cocktail-img w-full h-full object-cover opacity-0 transition-opacity duration-500"
                              onload="this.classList.remove('opacity-0')">
                         <div class="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent"></div>
-                        <button onclick="event.stopPropagation(); toggleFav('${c.name.replace(/'/g, "\\'")}')" 
-                            class="absolute top-4 right-4 w-10 h-10 rounded-full glass flex items-center justify-center hover:scale-110 transition z-10">
-                            <i class="${isFav ? 'fas fa-heart text-red-500' : 'far fa-heart text-white'}"></i>
-                        </button>
+                        
+                        <div class="absolute top-4 right-4 flex flex-col gap-2 z-10">
+                            <button onclick="event.stopPropagation(); toggleFav('${bombasticName}')" 
+                                class="w-10 h-10 rounded-full glass flex items-center justify-center hover:scale-110 transition">
+                                <i class="${isFav ? 'fas fa-heart text-red-500' : 'far fa-heart text-white'}"></i>
+                            </button>
+                            
+                            <button 
+                                onmousedown="startMakeListPress(event, '${bombasticName}')"
+                                onmouseup="endMakeListPress(event, '${bombasticName}')"
+                                onmouseleave="cancelMakeListPress(event)"
+                                ontouchstart="startMakeListPress(event, '${bombasticName}')"
+                                ontouchend="endMakeListPress(event, '${bombasticName}')"
+                                onclick="event.stopPropagation();"
+                                title="Klicken für +1, halten für Anzahl"
+                                class="w-10 h-10 rounded-full bg-slate-900/80 border border-amber-500/40 flex items-center justify-center hover:bg-amber-500 hover:text-slate-950 transition group">
+                                <i class="fas fa-clipboard-list text-amber-400 group-hover:text-slate-950 text-sm"></i>
+                            </button>
+                        </div>
+
                         <div class="absolute bottom-4 left-6 right-6">
                              <span class="text-[10px] uppercase tracking-widest text-sky-400 font-bold">${c.category || 'Classic'}</span>
                              <h3 class="text-xl font-bold text-white leading-tight truncate">${c.name}</h3>
@@ -273,14 +272,154 @@
             loadRealImages();
         }
 
-        // Filterlogik steuern (Kombination aus Bar-Auswahl & Suchschlitz)
+        // Longpress-Variablen für Cocktail-Karten
+        let cardPressTimer;
+        let isCardLongPress = false;
+
+        function startMakeListPress(e, name) {
+            e.stopPropagation();
+            isCardLongPress = false;
+            cardPressTimer = setTimeout(() => {
+                isCardLongPress = true;
+                const count = prompt(`Wie viele "${name}" sollen auf die Liste?`, "1");
+                if (count !== null && !isNaN(count) && parseInt(count) > 0) {
+                    addToMakeList(name, parseInt(count));
+                }
+            }, 500);
+        }
+
+        function endMakeListPress(e, name) {
+            e.stopPropagation();
+            clearTimeout(cardPressTimer);
+            if (!isCardLongPress) {
+                addToMakeList(name, 1);
+            }
+        }
+
+        function cancelMakeListPress(e) {
+            clearTimeout(cardPressTimer);
+        }
+
+        // Longpress-Variablen für das Haken-Icon (Löschen)
+        let checkPressTimer;
+        let isCheckLongPress = false;
+
+        function startCheckPress(e, id) {
+            e.stopPropagation();
+            isCheckLongPress = false;
+            checkPressTimer = setTimeout(() => {
+                isCheckLongPress = true;
+                // Alle entfernen (Longpress)
+                removeAllOfItem(id);
+            }, 500);
+        }
+
+        function endCheckPress(e, id) {
+            e.stopPropagation();
+            clearTimeout(checkPressTimer);
+            if (!isCheckLongPress) {
+                // Nur 1 entfernen (Kurzer Klick)
+                removeOneFromMakeList(id);
+            }
+        }
+
+        function cancelCheckPress(e) {
+            clearTimeout(checkPressTimer);
+        }
+
+        function addToMakeList(name, count) {
+            const newItem = {
+                id: Date.now() + Math.random().toString(36).substr(2, 5),
+                name: name,
+                count: count,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+            makeList.push(newItem);
+            localStorage.setItem('hca_makelist_v1', JSON.stringify(makeList));
+            updateMakeListUI();
+        }
+
+        // NEU: Zieht nur 1 von der Anzahl ab
+        function removeOneFromMakeList(id) {
+            makeList = makeList.map(item => {
+                if (item.id === id) {
+                    item.count -= 1;
+                }
+                return item;
+            }).filter(item => item.count > 0); // Schmeißt Elemente mit 0 raus
+            
+            localStorage.setItem('hca_makelist_v1', JSON.stringify(makeList));
+            updateMakeListUI();
+        }
+
+        // NEU: Schmeißt das Element direkt komplett raus (Longpress)
+        function removeAllOfItem(id) {
+            makeList = makeList.filter(item => item.id !== id);
+            localStorage.setItem('hca_makelist_v1', JSON.stringify(makeList));
+            updateMakeListUI();
+        }
+
+        function clearMakeList() {
+            if(confirm("Möchtest du wirklich alle Einträge aus der Mach-Liste löschen?")) {
+                makeList = [];
+                localStorage.setItem('hca_makelist_v1', JSON.stringify(makeList));
+                updateMakeListUI();
+            }
+        }
+
+        function toggleMakeList() {
+            document.getElementById('makeListSection').classList.toggle('hidden');
+        }
+
+        function updateMakeListUI() {
+            const container = document.getElementById('makeListContainer');
+            const badge = document.getElementById('makeListBadge');
+            
+            const totalDrinks = makeList.reduce((sum, item) => sum + item.count, 0);
+            if(totalDrinks > 0) {
+                badge.textContent = totalDrinks;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+
+            if(makeList.length === 0) {
+                container.innerHTML = `<p class="text-slate-500 text-sm col-span-full py-4 text-center">Die Mach-Liste ist aktuell leer.</p>`;
+                return;
+            }
+
+            container.innerHTML = makeList.map(item => {
+                const bombasticName = item.name.replace(/'/g, "\\'");
+                return `
+                <div class="flex items-center justify-between p-4 glass rounded-2xl border border-white/5 bg-slate-900/20 hover:border-amber-500/20 transition animate-fade-in">
+                    <div class="flex flex-col flex-grow cursor-pointer pr-2" onclick="openDetail('${bombasticName}')">
+                        <span class="font-bold text-sm text-white hover:text-amber-400 transition">${item.name}</span>
+                        <span class="text-[10px] text-slate-500">Bestellt um ${item.timestamp} Uhr</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="bg-amber-500/20 text-amber-400 text-xs font-bold px-2.5 py-1 rounded-xl">
+                            ${item.count}x
+                        </span>
+                        <button 
+                            onmousedown="startCheckPress(event, '${item.id}')"
+                            onmouseup="endCheckPress(event, '${item.id}')"
+                            onmouseleave="cancelCheckPress(event)"
+                            ontouchstart="startCheckPress(event, '${item.id}')"
+                            ontouchend="endCheckPress(event, '${item.id}')"
+                            onclick="event.stopPropagation();"
+                            title="Klicken für -1, halten zum Komplettlöschen"
+                            class="w-8 h-8 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 flex items-center justify-center transition border border-emerald-500/20 select-none">
+                            <i class="fas fa-check text-xs pointer-events-none"></i>
+                        </button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
         function applyFilters() {
             const term = document.getElementById('searchInput').value.toLowerCase();
-            
-            // 1. Filter nach Bar-Zutaten
             let filtered = allCocktails.filter(canMix);
             
-            // 2. Filter nach Textsuche
             if(term) {
                 filtered = filtered.filter(c => 
                     c.name.toLowerCase().includes(term) || 
@@ -288,12 +427,10 @@
                 );
             }
             
-            // Info-Banner über aktive Bar-Filterung umschalten
             const statusBanner = document.getElementById('filterStatus');
             if(myBarIngredients.length > 0) {
                 statusBanner.classList.remove('hidden');
             } else {
-                statusBanner.addClassList ? statusBanner.classList.add('hidden') : statusBanner.setAttribute('class', 'hidden mb-6 flex justify-between items-center bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-2xl animate-fade-in hidden');
                 statusBanner.classList.add('hidden');
             }
 
@@ -310,7 +447,7 @@
                     if(data.drinks && data.drinks[0].strDrinkThumb) {
                         img.src = data.drinks[0].strDrinkThumb;
                     }
-                } catch(e) { /* Fallback bleibt ui-avatar */ }
+                } catch(e) {}
             });
         }
 
@@ -326,12 +463,8 @@
             updateBackupText();
         }
 
-        /* BAR STEUERUNG */
-        function toggleBar() {
-            const section = document.getElementById('barSection');
-            section.classList.toggle('hidden');
-        }
-
+        // ... [Rest des unveränderten Bar, Backup & Modal Codes] ...
+        function toggleBar() { document.getElementById('barSection').classList.toggle('hidden'); }
         function renderBarIngredients() {
             const grid = document.getElementById('barIngredientsGrid');
             grid.innerHTML = allIngredients.map(ing => {
@@ -345,198 +478,47 @@
                 `;
             }).join('');
         }
-
         function toggleBarIngredient(checkbox) {
             const val = checkbox.value;
-            if(checkbox.checked) {
-                if(!myBarIngredients.includes(val)) myBarIngredients.push(val);
-            } else {
-                myBarIngredients = myBarIngredients.filter(i => i !== val);
-            }
+            if(checkbox.checked) { if(!myBarIngredients.includes(val)) myBarIngredients.push(val); } else { myBarIngredients = myBarIngredients.filter(i => i !== val); }
             localStorage.setItem('hca_bar_ingredients_v1', JSON.stringify(myBarIngredients));
-            
-            // Optisches Feedback anpassen
             const parent = checkbox.closest('.ingredient-item');
-            if(checkbox.checked) {
-                parent.classList.add('border-emerald-500/40', 'bg-emerald-500/5');
-                parent.querySelector('span').classList.replace('text-slate-300', 'text-emerald-200');
-            } else {
-                parent.classList.remove('border-emerald-500/40', 'bg-emerald-500/5');
-                parent.querySelector('span').classList.replace('text-emerald-200', 'text-slate-300');
-            }
-            
-            applyFilters();
-            updateBackupText();
-            if(!document.getElementById('listsSection').classList.contains('hidden')) updateFavUI();
+            if(checkbox.checked) { parent.classList.add('border-emerald-500/40', 'bg-emerald-500/5'); parent.querySelector('span').classList.replace('text-slate-300', 'text-emerald-200'); } else { parent.classList.remove('border-emerald-500/40', 'bg-emerald-500/5'); parent.querySelector('span').classList.replace('text-emerald-200', 'text-slate-300'); }
+            applyFilters(); updateBackupText(); if(!document.getElementById('listsSection').classList.contains('hidden')) updateFavUI();
         }
-
         function filterBarIngredients() {
             const term = document.getElementById('barSearchInput').value.toLowerCase();
-            const items = document.querySelectorAll('.ingredient-item');
-            items.forEach(item => {
+            document.querySelectorAll('.ingredient-item').forEach(item => {
                 const text = item.querySelector('span').textContent.toLowerCase();
-                if(text.includes(term)) {
-                    item.classList.remove('hidden');
-                } else {
-                    item.classList.add('hidden');
-                }
+                item.classList.toggle('hidden', !text.includes(term));
             });
         }
-
-        function clearBar() {
-            myBarIngredients = [];
-            localStorage.setItem('hca_bar_ingredients_v1', JSON.stringify(myBarIngredients));
-            document.getElementById('barSearchInput').value = '';
-            renderBarIngredients();
-            applyFilters();
-            updateBackupText();
-        }
-
-        function toggleBackup() {
-            const section = document.getElementById('backupSection');
-            section.classList.toggle('hidden');
-            updateBackupText();
-        }
-
-        function toggleLists() {
-            const section = document.getElementById('listsSection');
-            section.classList.toggle('hidden');
-            updateFavUI();
-        }
-
-        // Exportiert jetzt ein kombiniertes JSON-Objekt aus Favoriten UND Bar-Zutaten
-        function updateBackupText() {
-            const backupData = {
-                favs: favorites,
-                bar: myBarIngredients
-            };
-            const code = btoa(JSON.stringify(backupData));
-            document.getElementById('exportArea').value = code;
-        }
-
-        function copyExport() {
-            const area = document.getElementById('exportArea');
-            area.select();
-            document.execCommand('copy');
-            alert('Backup-Code kopiert!');
-        }
-
+        function clearBar() { myBarIngredients = []; localStorage.setItem('hca_bar_ingredients_v1', JSON.stringify(myBarIngredients)); document.getElementById('barSearchInput').value = ''; renderBarIngredients(); applyFilters(); updateBackupText(); }
+        function toggleBackup() { document.getElementById('backupSection').classList.toggle('hidden'); updateBackupText(); }
+        function toggleLists() { document.getElementById('listsSection').classList.toggle('hidden'); updateFavUI(); }
+        function updateBackupText() { const backupData = { favs: favorites, bar: myBarIngredients, make: makeList }; document.getElementById('exportArea').value = btoa(JSON.stringify(backupData)); }
+        function copyExport() { document.getElementById('exportArea').select(); document.execCommand('copy'); alert('Backup-Code kopiert!'); }
         function importData() {
             const code = document.getElementById('importArea').value.trim();
             try {
                 const decoded = JSON.parse(atob(code));
-                
-                // Unterstützung für altes Format (nur Array) und neues Format (Objekt mit favs und bar)
-                if (Array.isArray(decoded)) {
-                    favorites = decoded;
-                    myBarIngredients = [];
-                } else if (decoded && typeof decoded === 'object') {
-                    favorites = decoded.favs || [];
-                    myBarIngredients = decoded.bar || [];
-                }
-                
-                localStorage.setItem('hca_favorites_v1', JSON.stringify(favorites));
-                localStorage.setItem('hca_bar_ingredients_v1', JSON.stringify(myBarIngredients));
-                
-                alert('Sammlung und Bar-Zutaten erfolgreich importiert!');
-                location.reload();
-            } catch(e) {
-                alert('Fehler: Ungültiger Backup-Code!');
-            }
+                if (Array.isArray(decoded)) { favorites = decoded; myBarIngredients = []; makeList = []; } else if (decoded && typeof decoded === 'object') { favorites = decoded.favs || []; myBarIngredients = decoded.bar || []; makeList = decoded.make || []; }
+                localStorage.setItem('hca_favorites_v1', JSON.stringify(favorites)); localStorage.setItem('hca_bar_ingredients_v1', JSON.stringify(myBarIngredients)); localStorage.setItem('hca_makelist_v1', JSON.stringify(makeList));
+                alert('Daten erfolgreich importiert!'); location.reload();
+            } catch(e) { alert('Fehler: Ungültiger Backup-Code!'); }
         }
-
         function updateFavUI() {
-            const container = document.getElementById('savedLists');
-            const favItems = allCocktails.filter(c => favorites.includes(c.name));
-            container.innerHTML = favItems.length ? favItems.map(c => {
-                const img = document.querySelector(`img[data-name="${c.name}"]`)?.src || '';
-                return `
-                <div class="flex items-center gap-4 p-3 glass rounded-2xl cursor-pointer hover:bg-white/5 transition" onclick="openDetail('${c.name.replace(/'/g, "\\'")}')">
-                    <img src="${img}" class="w-12 h-12 rounded-xl object-cover bg-slate-800">
-                    <span class="font-bold text-sm flex-grow truncate">${c.name}</span>
-                    <i class="fas fa-trash text-slate-600 hover:text-red-500 p-2" onclick="event.stopPropagation(); toggleFav('${c.name}')"></i>
-                </div>`;
-            }).join('') : '<p class="text-slate-500 text-sm col-span-full">Deine Sammlung ist noch leer.</p>';
+            const container = document.getElementById('savedLists'); const favItems = allCocktails.filter(c => favorites.includes(c.name));
+            container.innerHTML = favItems.length ? favItems.map(c => { const img = document.querySelector(`img[data-name="${c.name}"]`)?.src || ''; return `<div class="flex items-center gap-4 p-3 glass rounded-2xl cursor-pointer hover:bg-white/5 transition" onclick="openDetail('${c.name.replace(/'/g, "\\'")}')"><img src="${img}" class="w-12 h-12 rounded-xl object-cover bg-slate-800"><span class="font-bold text-sm flex-grow truncate">${c.name}</span><i class="fas fa-trash text-slate-600 hover:text-red-500 p-2" onclick="event.stopPropagation(); toggleFav('${c.name}')"></i></div>`; }).join('') : '<p class="text-slate-500 text-sm col-span-full">Deine Sammlung ist noch leer.</p>';
         }
-
         function openDetail(name) {
-            const c = allCocktails.find(x => x.name === name);
-            const content = document.getElementById('modalContent');
-            const currentImg = document.querySelector(`img[data-name="${name}"]`)?.src;
-            
-            content.innerHTML = `
-                <div class="flex flex-col lg:flex-row">
-                    <div class="lg:w-1/2 h-80 lg:h-auto relative">
-                        <img src="${currentImg}" class="w-full h-full object-cover">
-                        <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent"></div>
-                    </div>
-                    
-                    <div class="lg:w-1/2 p-8 lg:p-12">
-                        <div class="mb-6">
-                            <span class="text-sky-400 font-bold uppercase tracking-[0.2em] text-[10px] block mb-1">
-                                ${c.category || 'Classic'} • ${c.type || 'Cocktail'}
-                            </span>
-                            <h2 class="text-4xl font-black text-white">${c.name}</h2>
-                        </div>
-
-                        <div class="space-y-8">
-                            <div>
-                                <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Zutaten</h4>
-                                <ul class="grid grid-cols-1 gap-2">
-                                    ${c.ingredients.map(ing => {
-                                        const clean = cleanIngredientName(ing);
-                                        const hasIt = myBarIngredients.includes(clean);
-                                        return `
-                                        <li class="flex items-center justify-between bg-white/5 p-3 rounded-xl border ${hasIt ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-white/5'} text-sm">
-                                            <div class="flex items-center gap-3">
-                                                <i class="fas fa-vial ${hasIt ? 'text-emerald-400' : 'text-sky-500'} text-xs"></i>
-                                                <span class="${hasIt ? 'text-emerald-200 font-medium' : ''}">${ing}</span>
-                                            </div>
-                                            ${hasIt ? '<span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">Vorhanden</span>' : ''}
-                                        </li>
-                                        `;
-                                    }).join('')}
-                                </ul>
-                            </div>
-
-                            <div>
-                                <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Zubereitung</h4>
-                                <p class="text-slate-300 leading-relaxed italic bg-sky-500/5 p-5 rounded-2xl border-l-2 border-sky-500">
-                                    "${c.method}"
-                                </p>
-                            </div>
-
-                            ${c.notes ? `
-                            <div class="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl">
-                                <p class="text-xs text-amber-200/80 italic"><i class="fas fa-info-circle mr-2 text-amber-500"></i>${c.notes}</p>
-                            </div>
-                            ` : ''}
-
-                            <div class="grid grid-cols-2 gap-4">
-                                <div class="bg-slate-900/50 p-4 rounded-2xl border border-white/5">
-                                    <p class="text-[10px] text-slate-500 uppercase font-bold mb-1">Glas</p>
-                                    <p class="text-xs text-slate-200">${c.standard_drinkware || 'Standard Glas'}</p>
-                                </div>
-                                <div class="bg-slate-900/50 p-4 rounded-2xl border border-white/5">
-                                    <p class="text-[10px] text-slate-500 uppercase font-bold mb-1">Serviert</p>
-                                    <p class="text-xs text-slate-200">${c.served || 'Nach Belieben'}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>`;
-            
-            document.getElementById('modal').classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
+            const c = allCocktails.find(x => x.name === name); if (!c) return;
+            const content = document.getElementById('modalContent'); const currentImg = document.querySelector(`img[data-name="${name}"]`)?.src || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0f172a&color=38bdf8&size=512`;
+            content.innerHTML = `<div class="flex flex-col lg:flex-row"><div class="lg:w-1/2 h-80 lg:h-auto relative"><img src="${currentImg}" class="w-full h-full object-cover"><div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent"></div></div><div class="lg:w-1/2 p-8 lg:p-12"><div class="mb-6"><span class="text-sky-400 font-bold uppercase tracking-[0.2em] text-[10px] block mb-1">${c.category || 'Classic'} • ${c.type || 'Cocktail'}</span><h2 class="text-4xl font-black text-white">${c.name}</h2></div><div class="space-y-8"><div><h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Zutaten</h4><ul class="grid grid-cols-1 gap-2">${c.ingredients.map(ing => { const clean = cleanIngredientName(ing); const hasIt = myBarIngredients.includes(clean); return `<li class="flex items-center justify-between bg-white/5 p-3 rounded-xl border ${hasIt ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-white/5'} text-sm"><div class="flex items-center gap-3"><i class="fas fa-vial ${hasIt ? 'text-emerald-400' : 'text-sky-500'} text-xs"></i><span class="${hasIt ? 'text-emerald-200 font-medium' : ''}">${ing}</span></div>${hasIt ? '<span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">Vorhanden</span>' : ''}</li>`; }).join('')}</ul></div><div><h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Zubereitung</h4><p class="text-slate-300 leading-relaxed italic bg-sky-500/5 p-5 rounded-2xl border-l-2 border-sky-500">"${c.method}"</p></div>${c.notes ? `<div class="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl"><p class="text-xs text-amber-200/80 italic"><i class="fas fa-info-circle mr-2 text-amber-500"></i>${c.notes}</p></div>` : ''}<div class="grid grid-cols-2 gap-4"><div class="bg-slate-900/50 p-4 rounded-2xl border border-white/5"><p class="text-[10px] text-slate-500 uppercase font-bold mb-1">Glas</p><p class="text-xs text-slate-200">${c.standard_drinkware || 'Standard Glas'}</p></div><div class="bg-slate-900/50 p-4 rounded-2xl border border-white/5"><p class="text-[10px] text-slate-500 uppercase font-bold mb-1">Serviert</p><p class="text-xs text-slate-200">${c.served || 'Nach Belieben'}</p></div></div></div></div></div>`;
+            document.getElementById('modal').classList.remove('hidden'); document.body.style.overflow = 'hidden';
         }
-
-        function closeModal() {
-            document.getElementById('modal').classList.add('hidden');
-            document.body.style.overflow = 'auto';
-        }
-
+        function closeModal() { document.getElementById('modal').classList.add('hidden'); document.body.style.overflow = 'auto'; }
         document.getElementById('searchInput').addEventListener('input', applyFilters);
-
         init();
     </script>
 </body>
