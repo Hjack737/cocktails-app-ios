@@ -1,4 +1,4 @@
-name: Build Free IPA via Cordova
+name: Build IPA
 
 on:
   workflow_dispatch:
