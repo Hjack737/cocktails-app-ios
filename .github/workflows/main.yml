@@ -13,15 +13,13 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20 # Cordova läuft perfekt und stabil auf Node 20
+          node-version: 20
 
-      # FIX: Wir bauen eine saubere Cordova-Struktur auf dem Server auf
       - name: Install Cordova & Create Project
         run: |
           npm install -g cordova
           cordova create htmlapp com.deinname.cocktailapp "Cocktails App"
           
-      # FIX: Wir schieben deine HTML-Dateien in den korrekten www-Ordner
       - name: Copy Web Files
         run: |
           rm -rf htmlapp/www/*
@@ -34,28 +32,16 @@ jobs:
           cordova platform add ios
           cordova prepare ios
 
-      # FIX: Wir zwingen Xcode über ein Build-Config-File dazu, jegliches Signieren komplett zu ignorieren
+      # FIX: Sauberes, einzeiliges JSON ohne störende Zeilenumbrüche oder Backslashes
       - name: Configure Xcode Build Settings
         run: |
-          mkdir -p htmlapp/platforms/ios/cordova
-          echo '{\
-            "ios": {\
-              "release": {\
-                "codeSignIdentity": "",\
-                "developmentTeam": "",\
-                "packageType": "ad-hoc",\
-                "provisioningProfile": ""\
-              }\
-            }\
-          }' > htmlapp/build.json
+          echo '{"ios":{"release":{"codeSignIdentity":"","developmentTeam":"","packageType":"ad-hoc","provisioningProfile":""}}}' > htmlapp/build.json
 
-      # FIX: Der eigentliche Compile-Vorgang über Cordova (rennt ohne Swift-Fehler durch)
       - name: Build Xcode Project
         run: |
           cd htmlapp
           cordova build ios --release --device -- --CODE_SIGNING_ALLOWED=NO --CODE_SIGNING_REQUIRED=NO
 
-      # FIX: Verpacken der fertigen .app in eine saubere .ipa für SideStore
       - name: Package into IPA Folder
         run: |
           mkdir -p Payload
