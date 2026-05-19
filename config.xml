@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='utf-8'?>
+<widget id="com.hjack737.cocktails" version="1.0.0" xmlns="http://www.w3.org/ns/widgets">
+    <!-- Hier den Namen ändern -->
+    <name>Cocktails</name>
+    
+    <!-- Hier die Bundle-ID (Package Name) ändern -->
+    <widget id="com.hjack737.cocktails" version="1.0.0">
+    
+    <platform name="ios">
+        <!-- App Icon Einstellungen -->
+        <icon src="res/icon.png" width="1024" height="1024" />
+    </platform>
+</widget>
