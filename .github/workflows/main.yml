@@ -1,4 +1,4 @@
-name: Build Free IPA
+name: Build Free IPA via Cordova
 
 on:
   workflow_dispatch:
@@ -13,43 +13,55 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20 # Cordova läuft perfekt und stabil auf Node 20
 
-      # Bereitet den Web-Ordner vor (Ignoriert alte Build-Reste)
-      - name: Prepare Web Directory
+      # FIX: Wir bauen eine saubere Cordova-Struktur auf dem Server auf
+      - name: Install Cordova & Create Project
         run: |
-          mkdir -p www
-          find . -maxdepth 1 -type f -not -name ".*" -not -name "App.ipa" -exec cp {} www/ \;
-          find . -maxdepth 1 -type d -not -name "." -not -name ".." -not -name ".git" -not -name ".github" -not -name "www" -exec cp -r {} www/ \;
-
-      - name: Install Capacitor & Framework
+          npm install -g cordova
+          cordova create htmlapp com.deinname.cocktailapp "Cocktails App"
+          
+      # FIX: Wir schieben deine HTML-Dateien in den korrekten www-Ordner
+      - name: Copy Web Files
         run: |
-          npm install @capacitor/core@latest @capacitor/cli@latest
-          npx cap init "Cocktails App" "com.deinname.cocktailapp" --web-dir=www
-          npm install @capacitor/ios@latest
-          npx cap add ios
+          rm -rf htmlapp/www/*
+          find . -maxdepth 1 -type f -not -name ".*" -exec cp {} htmlapp/www/ \;
+          find . -maxdepth 1 -type d -not -name "." -not -name ".." -not -name ".git" -not -name ".github" -not -name "htmlapp" -exec cp -r {} htmlapp/www/ \;
 
-      - name: Sync Web Files to iOS Project
+      - name: Add iOS Platform
         run: |
-          npx cap sync ios
+          cd htmlapp
+          cordova platform add ios
+          cordova prepare ios
 
-      # FIX: Wir deaktivieren die strikte Zertifikatspflicht direkt in den Xcode-Einstellungen vor dem Build
-      - name: Disable Code Signing in Project Settings
+      # FIX: Wir zwingen Xcode über ein Build-Config-File dazu, jegliches Signieren komplett zu ignorieren
+      - name: Configure Xcode Build Settings
         run: |
-          sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' ios/App/App.xcodeproj/project.pbxproj || true
+          mkdir -p htmlapp/platforms/ios/cordova
+          echo '{\
+            "ios": {\
+              "release": {\
+                "codeSignIdentity": "",\
+                "developmentTeam": "",\
+                "packageType": "ad-hoc",\
+                "provisioningProfile": ""\
+              }\
+            }\
+          }' > htmlapp/build.json
 
-      # FIX: Wir nutzen den "archive" Befehl. Das zwingt Xcode, die App sauber fertigzustellen, ohne am Ende abzustürzen.
-      - name: Build Xcode Archive
+      # FIX: Der eigentliche Compile-Vorgang über Cordova (rennt ohne Swift-Fehler durch)
+      - name: Build Xcode Project
         run: |
-          cd ios/App
-          xcodebuild archive -project App.xcodeproj -scheme App -archivePath ./build/App.xcarchive -sdk iphoneos -destination 'generic/platform=iOS' IPHONEOS_DEPLOYMENT_TARGET=14.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+          cd htmlapp
+          cordova build ios --release --device -- --CODE_SIGNING_ALLOWED=NO --CODE_SIGNING_REQUIRED=NO
 
-      # FIX: Wir holen uns die App direkt aus dem fertigen Archiv-Container
+      # FIX: Verpacken der fertigen .app in eine saubere .ipa für SideStore
       - name: Package into IPA Folder
         run: |
           mkdir -p Payload
-          cp -r ios/App/build/App.xcarchive/Products/Applications/App.app Payload/
-          chmod +x Payload/App.app/App
+          APP_PATH=$(find htmlapp/platforms/ios/build/device -name "*.app" -type d | head -n 1)
+          echo "App gefunden unter: $APP_PATH"
+          cp -r "$APP_PATH" Payload/
           zip -r App.ipa Payload
 
       - name: Upload IPA Release Artifact
