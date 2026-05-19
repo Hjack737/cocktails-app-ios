@@ -15,6 +15,7 @@ jobs:
         with:
           node-version: 22
 
+      # Bereitet den Web-Ordner vor (Ignoriert alte Build-Reste)
       - name: Prepare Web Directory
         run: |
           mkdir -p www
@@ -32,24 +33,23 @@ jobs:
         run: |
           npx cap sync ios
 
-      # FIX: Wir nutzen CODE_SIGNING_REQUIRED=NO (statt ALLOWED=NO), das erzeugt die Binärdatei sauberer
-      - name: Build IPA via Xcode (Unsigned)
+      # FIX: Wir deaktivieren die strikte Zertifikatspflicht direkt in den Xcode-Einstellungen vor dem Build
+      - name: Disable Code Signing in Project Settings
+        run: |
+          sed -i '' 's/CODE_SIGNING_ALLOWED = YES/CODE_SIGNING_ALLOWED = NO/g' ios/App/App.xcodeproj/project.pbxproj || true
+
+      # FIX: Wir nutzen den "archive" Befehl. Das zwingt Xcode, die App sauber fertigzustellen, ohne am Ende abzustürzen.
+      - name: Build Xcode Archive
         run: |
           cd ios/App
-          xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' IPHONEOS_DEPLOYMENT_TARGET=14.0 CODE_SIGN_REQUIRED=NO CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO AD_HOC_CODE_SIGNING_ALLOWED=YES clean build
+          xcodebuild archive -project App.xcodeproj -scheme App -archivePath ./build/App.xcarchive -sdk iphoneos -destination 'generic/platform=iOS' IPHONEOS_DEPLOYMENT_TARGET=14.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
 
-      # FIX: Wir packen die .app präzise ein und stellen sicher, dass die ausführbare Datei die richtigen Rechte hat
+      # FIX: Wir holen uns die App direkt aus dem fertigen Archiv-Container
       - name: Package into IPA Folder
         run: |
           mkdir -p Payload
-          # Sucht gezielt im Release-Ordner nach der echten App
-          TARGET_APP=$(find /Users/runner/Library/Developer/Xcode/DerivedData -name "App.app" -type d | grep "Release-iphoneos" | head -n 1)
-          echo "Kopiere App von: $TARGET_APP"
-          cp -r "$TARGET_APP" Payload/
-          
-          # Macht die ausführbare Datei innerhalb der App für iOS lesbar (behebt Bad File Descriptor)
+          cp -r ios/App/build/App.xcarchive/Products/Applications/App.app Payload/
           chmod +x Payload/App.app/App
-          
           zip -r App.ipa Payload
 
       - name: Upload IPA Release Artifact
