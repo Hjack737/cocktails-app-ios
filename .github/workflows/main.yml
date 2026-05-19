@@ -15,22 +15,26 @@ jobs:
         with:
           node-version: 20
 
+      # Schritt 3: Installiert Cordova und zieht sich DEINE config.xml sowie DEIN Icon
       - name: Install Cordova & Create Project
         run: |
           npm install -g cordova
-          # Wir erstellen ein leeres Projekt
-          cordova create htmlapp com.hjack737.cocktails "Cocktails"
-          # Wir überschreiben die automatisch generierte config.xml mit DEINER
-          cp config.xml htmlapp/config.xml
-          # Wir kopieren das Icon, falls vorhanden
+          # Erstellt das temporäre Arbeitsverzeichnis
+          cordova create htmlapp com.dummy.app "DummyApp"
+          
+          # AUTOMATISIERUNG: Überschreibt die Standard-Config mit deiner config.xml aus dem Repo
+          if [ -f "config.xml" ]; then cp config.xml htmlapp/config.xml; fi
+          
+          # Kopiert dein Icon, falls du eins im Ordner "res" hinterlegt hast
           mkdir -p htmlapp/res
           if [ -f "res/icon.png" ]; then cp res/icon.png htmlapp/res/icon.png; fi
-          
+
+      # Kopiert deine Cocktail-Webseiten-Dateien in den App-Ordner
       - name: Copy Web Files
         run: |
           rm -rf htmlapp/www/*
-          find . -maxdepth 1 -type f -not -name ".*" -exec cp {} htmlapp/www/ \;
-          find . -maxdepth 1 -type d -not -name "." -not -name ".." -not -name ".git" -not -name ".github" -not -name "htmlapp" -exec cp -r {} htmlapp/www/ \;
+          find . -maxdepth 1 -type f -not -name ".*" -not -name "config.xml" -exec cp {} htmlapp/www/ \;
+          find . -maxdepth 1 -type d -not -name "." -not -name ".." -not -name ".git" -not -name ".github" -not -name "htmlapp" -not -name "res" -exec cp -r {} htmlapp/www/ \;
 
       - name: Add iOS Platform
         run: |
@@ -38,19 +42,16 @@ jobs:
           cordova platform add ios
           cordova prepare ios
 
-      # FIX: Wir injizieren die Fake-Team-ID in die Projektdatei
       - name: Inject Fake Development Team
         run: |
           PROJ_PATH="htmlapp/platforms/ios/App.xcodeproj/project.pbxproj"
           sed -i '' 's/DevelopmentTeam = "";/DevelopmentTeam = "12345ABCDE";/g' "$PROJ_PATH" || true
 
-      # FIX: Wir umgehen Cordova beim Build und zwingen Xcode direkt dazu, Profile komplett zu ignorieren
       - name: Direct Native Xcode Build (Unsigned)
         run: |
           cd htmlapp/platforms/ios
           xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' IPHONEOS_DEPLOYMENT_TARGET=14.0 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" PROVISIONING_PROFILE_SPECIFIER="" PROVISIONING_PROFILE="" clean build
 
-      # FIX: Wir holen uns die frisch gebaute .app-Datei direkt aus den nativen Xcode-DerivedData
       - name: Package into IPA Folder
         run: |
           mkdir -p Payload
