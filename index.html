@@ -83,16 +83,35 @@
         <section id="backupSection" class="hidden mb-12 p-8 glass rounded-[2.5rem] border-2 border-dashed border-sky-500/20 animate-fade-in">
             <div class="flex items-center gap-3 mb-6">
                 <i class="fas fa-cloud-upload-alt text-sky-400 text-xl"></i>
-                <h2 class="text-xl font-bold">Backup & Restore (inkl. Bar-Zutaten)</h2>
+                <h2 class="text-xl font-bold">Cloud Sync & Sicherheit</h2>
             </div>
+
+            <div class="mb-6 space-y-2">
+                <label class="text-xs font-bold text-slate-400 uppercase tracking-widest">Deine private Google Apps Script URL</label>
+                <input type="password" id="cloudUrlInput" placeholder="https://script.google.com/macros/s/.../exec" 
+                    class="w-full bg-slate-900 border border-slate-700 rounded-xl py-3 px-4 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all text-slate-300">
+                <p class="text-[10px] text-slate-500">Hinweis: Diese URL wird nur lokal in deinem Browser gespeichert und landet nie auf GitHub.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                <button id="cloudSaveBtn" onclick="saveToCloud()" class="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 py-4 rounded-2xl text-sm font-bold uppercase transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                    <i class="fab fa-google-drive text-lg"></i> Favoriten & Bar sichern
+                </button>
+                <button id="cloudLoadBtn" onclick="loadFromCloud()" class="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 py-4 rounded-2xl text-sm font-bold uppercase transition-all shadow-[0_0_15px_rgba(99,102,241,0.2)]">
+                    <i class="fas fa-cloud-download-alt text-lg"></i> Favoriten & Bar laden
+                </button>
+            </div>
+
+            <div class="h-px bg-slate-800 mb-8"></div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div class="space-y-3">
-                    <label class="text-xs font-bold text-slate-500 uppercase tracking-widest">Export (Code kopieren)</label>
+                    <label class="text-xs font-bold text-slate-500 uppercase tracking-widest">Manuell Export (Code kopieren)</label>
                     <textarea id="exportArea" readonly class="w-full h-24 bg-black/40 rounded-2xl p-4 text-[10px] font-mono border border-white/5 focus:outline-none"></textarea>
                     <button onclick="copyExport()" class="w-full bg-sky-600 hover:bg-sky-500 py-3 rounded-xl text-xs font-bold uppercase transition-all">Code Kopieren</button>
                 </div>
                 <div class="space-y-3">
-                    <label class="text-xs font-bold text-slate-500 uppercase tracking-widest">Import (Code einfügen)</label>
+                    <label class="text-xs font-bold text-slate-500 uppercase tracking-widest">Manuell Import (Code einfügen)</label>
                     <textarea id="importArea" class="w-full h-24 bg-black/40 rounded-2xl p-4 text-[10px] font-mono border border-white/5 focus:ring-1 focus:ring-purple-500 outline-none" placeholder="Hier Backup-Code einfügen..."></textarea>
                     <button onclick="importData()" class="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded-xl text-xs font-bold uppercase transition-all">Wiederherstellen</button>
                 </div>
@@ -337,6 +356,7 @@
             makeList.push(newItem);
             localStorage.setItem('hca_makelist_v1', JSON.stringify(makeList));
             updateMakeListUI();
+            pushMakeListToDrive();
         }
 
         // NEU: Zieht nur 1 von der Anzahl ab
@@ -350,6 +370,7 @@
             
             localStorage.setItem('hca_makelist_v1', JSON.stringify(makeList));
             updateMakeListUI();
+            pushMakeListToDrive();
         }
 
         // NEU: Schmeißt das Element direkt komplett raus (Longpress)
@@ -357,6 +378,7 @@
             makeList = makeList.filter(item => item.id !== id);
             localStorage.setItem('hca_makelist_v1', JSON.stringify(makeList));
             updateMakeListUI();
+            pushMakeListToDrive();
         }
 
         function clearMakeList() {
@@ -364,6 +386,7 @@
                 makeList = [];
                 localStorage.setItem('hca_makelist_v1', JSON.stringify(makeList));
                 updateMakeListUI();
+                pushMakeListToDrive();
             }
         }
 
@@ -520,6 +543,130 @@
         function closeModal() { document.getElementById('modal').classList.add('hidden'); document.body.style.overflow = 'auto'; }
         document.getElementById('searchInput').addEventListener('input', applyFilters);
         init();
+
+        // ========================================================
+        // GOOGLE DRIVE SYNC LOGIK (SICHER VOR GITHUB)
+        // ========================================================
+
+        // Lädt die URL beim Start der Seite automatisch aus dem LocalStorage ins Feld
+        document.addEventListener("DOMContentLoaded", () => {
+            const savedUrl = localStorage.getItem('hca_cloud_url') || '';
+            if(document.getElementById('cloudUrlInput')) {
+                document.getElementById('cloudUrlInput').value = savedUrl;
+            }
+            // Hintergrund-Sync: Prüft alle 5 Sekunden auf Updates der Mach-Liste aus dem Drive
+            setInterval(fetchMakeListFromDrive, 5000);
+        });
+
+        function getCloudUrl() {
+            const url = document.getElementById('cloudUrlInput').value.trim();
+            if(!url) return null;
+            localStorage.setItem('hca_cloud_url', url);
+            return url;
+        }
+
+        // --- 1. MANUELLER SYNC (FAVORITEN & BAR) ---
+        async function saveToCloud() {
+            const CLOUD_SYNC_URL = getCloudUrl();
+            if(!CLOUD_SYNC_URL) { alert("Bitte trage zuerst deine Google Apps Script URL ein!"); return; }
+
+            const backupData = { favs: favorites, bar: myBarIngredients };
+            const btn = document.getElementById('cloudSaveBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner animate-spin mr-2"></i>Sichert...';
+            
+            try {
+                const response = await fetch(CLOUD_SYNC_URL, {
+                    method: 'POST',
+                    mode: 'cors',
+                    body: JSON.stringify({ type: "backup", data: backupData }),
+                    headers: { 'Content-Type': 'text/plain' }
+                });
+                const res = await response.json();
+                if (res.status === "success") {
+                    alert('Favoriten und Bar erfolgreich auf Google Drive gesichert!');
+                } else {
+                    alert('Fehler: ' + res.message);
+                }
+            } catch (e) {
+                alert('Verbindung zu Google Drive fehlgeschlagen.');
+            } finally {
+                btn.innerHTML = originalText;
+            }
+        }
+
+        async function loadFromCloud() {
+            const CLOUD_SYNC_URL = getCloudUrl();
+            if(!CLOUD_SYNC_URL) { alert("Bitte trage zuerst deine Google Apps Script URL ein!"); return; }
+
+            const btn = document.getElementById('cloudLoadBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner animate-spin mr-2"></i>Lädt...';
+
+            try {
+                const response = await fetch(`${CLOUD_SYNC_URL}?type=backup`);
+                const res = await response.json();
+                
+                if (res.notFound) {
+                    alert('Kein Favoriten-Backup auf Google Drive gefunden.');
+                    return;
+                }
+
+                if (confirm('Backup laden? Lokale Favoriten und Bar-Zutaten werden überschrieben.')) {
+                    favorites = res.data.favs || [];
+                    myBarIngredients = res.data.bar || [];
+                    
+                    localStorage.setItem('hca_favorites_v1', JSON.stringify(favorites));
+                    localStorage.setItem('hca_bar_ingredients_v1', JSON.stringify(myBarIngredients));
+                    
+                    alert('Daten erfolgreich aus Google Drive geladen!');
+                    location.reload();
+                }
+            } catch (e) {
+                alert('Fehler beim Abrufen der Daten.');
+            } finally {
+                btn.innerHTML = originalText;
+            }
+        }
+
+        // --- 2. AUTOMATISCHER SYNC (MACH-LISTE HINTERGRUND) ---
+        async function pushMakeListToDrive() {
+            const CLOUD_SYNC_URL = getCloudUrl();
+            if(!CLOUD_SYNC_URL) return; // Macht lautlos nichts, wenn keine URL eingetragen ist
+
+            try {
+                await fetch(CLOUD_SYNC_URL, {
+                    method: 'POST',
+                    mode: 'cors',
+                    body: JSON.stringify({ type: "makelist", data: makeList }),
+                    headers: { 'Content-Type': 'text/plain' }
+                });
+            } catch(e) {
+                console.log("Mach-Liste Auto-Sync fehlgeschlagen.");
+            }
+        }
+
+        async function fetchMakeListFromDrive() {
+            const CLOUD_SYNC_URL = getCloudUrl();
+            if(!CLOUD_SYNC_URL) return;
+
+            try {
+                const response = await fetch(`${CLOUD_SYNC_URL}?type=makelist`);
+                const res = await response.json();
+                
+                if (res.status === "success" && Array.isArray(res.data)) {
+                    // Inhalt nur updaten, wenn sich im Drive wirklich etwas verändert hat
+                    if (JSON.stringify(res.data) !== JSON.stringify(makeList)) {
+                        makeList = res.data;
+                        localStorage.setItem('hca_makelist_v1', JSON.stringify(makeList));
+                        updateMakeListUI();
+                    }
+                }
+            } catch(e) {
+                console.log("Fehler beim automatischen Abrufen der Mach-Liste.");
+            }
+        }
+
     </script>
 </body>
 </html>
