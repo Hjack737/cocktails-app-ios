@@ -2,20 +2,19 @@ name: Auto Release on Main
 
 on:
   workflow_run:
-    workflows: ["Build Android APK", "Build iOS IPA"] # ⚠️ HIER die exakten Namen deiner beiden Workflows eintragen
+    # 💡 HIER KORRIGIERT: Muss exakt dem 'name:' aus deiner apk.yml entsprechen!
+    workflows: ["Build APK", "Build iOS IPA"] 
     types:
       - completed
-    branches:
-      - main # Reagiert nur auf Läufe, die auf dem main-Branch stattgefunden haben
 
 permissions:
-  contents: write # Zwingend erforderlich, damit die Action Releases erstellen darf
+  contents: write 
 
 jobs:
   create-release:
     runs-on: ubuntu-latest
-    # WICHTIG: Prüft, ob BEIDE Workflows erfolgreich ('success') abgeschlossen wurden
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # 💡 OPTIMIERT: Läuft nur, wenn der auslösende Build erfolgreich war UND auf dem main-Branch stattfand
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     
     steps:
       - name: Checkout Code
@@ -25,17 +24,20 @@ jobs:
       - name: Download Android APK
         uses: actions/download-artifact@v4
         with:
-          name: cocktails-app-apk # ⚠️ Name, den du im Android-Workflow bei 'actions/upload-artifact' vergeben hast
+          name: cocktails-app-apk # 💡 Passt perfekt zu deinem 'upload-artifact' Namen!
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
 
       # 2. IPA-Artefakt aus dem iOS-Workflow herunterladen
       - name: Download iOS IPA
         uses: actions/download-artifact@v4
         with:
-          name: cocktails-app-ipa # ⚠️ Name, den du im iOS-Workflow bei 'actions/upload-artifact' vergeben hast
+          name: cocktails-app-ipa 
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
+        continue-on-error: true # Falls der iOS-Workflow mal nicht lief, bricht der Release nicht komplett ab
 
-      # 3. Dynamischen Tag-Namen generieren (z.B. basierend auf dem aktuellen Zeitstempel oder der Run-Nummer)
+      # 3. Dynamischen Tag-Namen generieren
       - name: Generate Tag Name
         id: tag
         run: |
