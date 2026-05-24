@@ -1,0 +1,60 @@
+name: Auto Release on Main
+
+on:
+  workflow_run:
+    workflows: ["Build Android APK", "Build iOS IPA"] # ⚠️ HIER die exakten Namen deiner beiden Workflows eintragen
+    types:
+      - completed
+    branches:
+      - main # Reagiert nur auf Läufe, die auf dem main-Branch stattgefunden haben
+
+permissions:
+  contents: write # Zwingend erforderlich, damit die Action Releases erstellen darf
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    # WICHTIG: Prüft, ob BEIDE Workflows erfolgreich ('success') abgeschlossen wurden
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. APK-Artefakt aus dem Android-Workflow herunterladen
+      - name: Download Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Build APK # ⚠️ Name, den du im Android-Workflow bei 'actions/upload-artifact' vergeben hast
+          run-id: ${{ github.event.workflow_run.id }}
+
+      # 2. IPA-Artefakt aus dem iOS-Workflow herunterladen
+      - name: Download iOS IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: Build IPA # ⚠️ Name, den du im iOS-Workflow bei 'actions/upload-artifact' vergeben hast
+          run-id: ${{ github.event.workflow_run.id }}
+
+      # 3. Dynamischen Tag-Namen generieren (z.B. basierend auf dem aktuellen Zeitstempel oder der Run-Nummer)
+      - name: Generate Tag Name
+        id: tag
+        run: |
+          echo "release_tag=v${{ github.run_number }}-auto" >> $GITHUB_OUTPUT
+          echo "current_date=$(date +'%Y-%m-%d %H:%M')" >> $GITHUB_OUTPUT
+
+      # 4. Release erstellen und Artefakte hochladen
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          name: "Automatischer Release ${{ steps.tag.outputs.release_tag }}"
+          body: |
+            Dieser Release wurde automatisch nach erfolgreichem Build auf dem `main`-Branch erstellt.
+            **Erstellungsdatum:** ${{ steps.tag.outputs.current_date }}
+          draft: false
+          prerelease: false
+          files: |
+            **/*.apk
+            **/*.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
