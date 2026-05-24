@@ -2,8 +2,7 @@ name: Auto Release on Main
 
 on:
   workflow_run:
-    # Hört jetzt exakt auf den Namen deines iOS-Workflows
-    workflows: ["Build IPA"]
+    workflows: ["Build IPA"] # 🚀 Startet genau dann, wenn der iOS-Build fertig ist
     types:
       - completed
 
@@ -13,27 +12,31 @@ permissions:
 jobs:
   create-release:
     runs-on: ubuntu-latest
-    # Läuft nur, wenn der iOS-Build auf dem main-Branch erfolgreich war
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. APK-Artefakt herunterladen (sucht nach dem neuesten erfolgreichen Artefakt auf dem Branch)
+      # 1. APK-Artefakt herunterladen
       - name: Download Android APK
-        uses: actions/download-artifact@v4
+        uses: dawidd6/action-download-artifact@v6 # 💡 Eine robustere Action für workflow-übergreifende Downloads
         with:
-          name: cocktails-app-apk # Exakter Name aus deiner apk.yml
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: apk.yml # Dateiname deines Android-Workflows
+          name: cocktails-app-apk
+          branch: main
+          event: workflow_dispatch # Holt es unabhängig davon, wie Android gestartet wurde
+          check_artifacts: true
+          search_artifacts: true
 
-      # 2. IPA-Artefakt herunterladen (holt es direkt aus dem aktuell beendeten iOS-Lauf)
+      # 2. IPA-Artefakt herunterladen (aus dem aktuellen iOS-Lauf, der das Event ausgelöst hat)
       - name: Download iOS IPA
         uses: actions/download-artifact@v4
         with:
-          name: cocktails-app-ipa # Exakter Name aus deiner ipa.yml
+          name: cocktails-app-ipa
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ github.event.workflow_run.id }} # Nutzt die ID des aktuellen iOS-Laufs
 
       # 3. Dynamischen Tag-Namen generieren
       - name: Generate Tag Name
@@ -42,14 +45,14 @@ jobs:
           echo "release_tag=v${{ github.run_number }}-auto" >> $GITHUB_OUTPUT
           echo "current_date=$(date +'%Y-%m-%d %H:%M')" >> $GITHUB_OUTPUT
 
-      # 4. Release erstellen und beide entpackten Dateien hochladen (Keine ZIPs!)
+      # 4. Release erstellen und hochladen
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           name: "Automatischer Release ${{ steps.tag.outputs.release_tag }}"
           body: |
-            Dieser Release wurde automatisch nach erfolgreichem Build auf dem `main`-Branch erstellt.
+            Dieser Release wurde automatisch nach erfolgreichem iOS-Build erstellt.
             **Erstellungsdatum:** ${{ steps.tag.outputs.current_date }}
           draft: false
           prerelease: false
