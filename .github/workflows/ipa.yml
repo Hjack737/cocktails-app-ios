@@ -63,5 +63,5 @@ jobs:
       - name: Upload IPA Release Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cocktails-app-ipa
+          name: cocktails-app-ipa.ipa
           path: App.ipa
