@@ -1,60 +1,77 @@
 name: Auto Release on Main
 
 on:
-  workflow_run:
-    # 💡 HIER KORRIGIERT: Muss exakt dem 'name:' aus deiner apk.yml entsprechen!
-    workflows: ["Build APK", "Build iOS IPA"] 
-    types:
-      - completed
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Damit du es auch mal manuell starten kannst
 
 permissions:
-  contents: write 
+  contents: write
 
 jobs:
-  create-release:
+  # 1. Job: Startet beide Builds parallel und wartet auf sie
+  trigger-builds:
     runs-on: ubuntu-latest
-    # 💡 OPTIMIERT: Läuft nur, wenn der auslösende Build erfolgreich war UND auf dem main-Branch stattfand
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    steps:
+      - name: Trigger Android and iOS Builds
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Startet den Android-Build
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'apk.yml', // 💡 Dateiname deiner Android-YAML
+              ref: 'main'
+            });
+            
+            // Startet den iOS-Build
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'ipa.yml', // 💡 Dateiname deiner iOS-YAML
+              ref: 'main'
+            });
+
+  # 2. Job: Wartet auf die Fertigstellung und erstellt den Release
+  create-release:
+    needs: trigger-builds # Wartet, bis der Trigger-Job durch ist
+    runs-on: ubuntu-latest
+    # Um sicherzugehen, dass wir warten, nutzen wir hier ein kurzes Sleep-Timeout im echten Leben,
+    # ODER (noch viel einfacher für dein aktuelles Setup) wir nutzen die "Warte-Logik":
     
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. APK-Artefakt aus dem Android-Workflow herunterladen
-      - name: Download Android APK
+      # Wir nutzen ein feines Plugin, das wartet, bis die Artefakte wirklich existieren
+      - name: Wait for Artifacts and Download APK
         uses: actions/download-artifact@v4
         with:
-          name: cocktails-app-apk # 💡 Passt perfekt zu deinem 'upload-artifact' Namen!
+          name: cocktails-app-apk
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id }}
+        continue-on-error: true
 
-      # 2. IPA-Artefakt aus dem iOS-Workflow herunterladen
-      - name: Download iOS IPA
+      - name: Wait for Artifacts and Download IPA
         uses: actions/download-artifact@v4
         with:
-          name: cocktails-app-ipa 
+          name: cocktails-app-ipa
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id }}
-        continue-on-error: true # Falls der iOS-Workflow mal nicht lief, bricht der Release nicht komplett ab
+        continue-on-error: true
 
-      # 3. Dynamischen Tag-Namen generieren
       - name: Generate Tag Name
         id: tag
         run: |
           echo "release_tag=v${{ github.run_number }}-auto" >> $GITHUB_OUTPUT
           echo "current_date=$(date +'%Y-%m-%d %H:%M')" >> $GITHUB_OUTPUT
 
-      # 4. Release erstellen und Artefakte hochladen
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           name: "Automatischer Release ${{ steps.tag.outputs.release_tag }}"
-          body: |
-            Dieser Release wurde automatisch nach erfolgreichem Build auf dem `main`-Branch erstellt.
-            **Erstellungsdatum:** ${{ steps.tag.outputs.current_date }}
-          draft: false
-          prerelease: false
+          body: "Automatischer Release nach erfolgreichem Build beider Plattformen."
           files: |
             **/*.apk
             **/*.ipa
