@@ -3,6 +3,8 @@ A simple html giving a modern interface with instructions for many cocktails
 ## Credits
 * Database from: https://github.com/rasmusab/iba-cocktails
 * Images from: https://thecocktaildb.com
+* Logo from:
+https://www.pexels.com/de-de/foto/text-hangen-beleuchtet-stillleben-7317299/
 
 ## Features
 * Modern Dark-mode Design
